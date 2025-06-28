@@ -4,7 +4,6 @@ from tensorflow.keras import layers, models, regularizers
 from tensorflow.keras.applications import MobileNetV2, mobilenet_v2
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 from tensorflow.keras.models import load_model
-from tensorflow.keras.losses import CategoricalCrossentropy
 from tensorflow.keras.callbacks import Callback
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 from sklearn.utils.class_weight import compute_class_weight
@@ -16,10 +15,9 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # 0 = all, 1 = info, 2 = warning, 3 = 
 tf.get_logger().setLevel('ERROR')
 import matplotlib.pyplot as plt
 import numpy as np
-import logging
 import random
 import sys
-# import json
+import json
 
 console = Console() 
 sys.stdout.flush()
@@ -42,7 +40,8 @@ else:
     count = 1
 with open(count_path, 'w') as f:
     f.write(str(count))
-print(f"🧠 Training No.{count}", flush = True)
+
+console.print(f"[cyan]Training No.{count}[/]")
 
 # dataset
 train_dir = r"C:\E521C\DataImage\trash_dataset_v2_new_split\train"
@@ -53,13 +52,11 @@ BS = 16 # batch_size
 size = 192  # image_size
 IS = (size, size)
 
-logging.getLogger("tensorflow").setLevel(logging.ERROR)
-# 載入資料集
+# loading dataset
 train_ds = tf.keras.utils.image_dataset_from_directory(train_dir, image_size = (192, 192), batch_size = BS, label_mode = 'categorical')
 val_ds   = tf.keras.utils.image_dataset_from_directory(val_dir, image_size = (192, 192), batch_size = BS, label_mode = 'categorical')
 test_ds  = tf.keras.utils.image_dataset_from_directory(test_dir, image_size = (192, 192), batch_size = BS, label_mode = 'categorical')
 
-# 自訂顯示訊息
 def count_images(directory):
     return sum([len(files) for _, _, files in os.walk(directory) if any(f.lower().endswith(('jpg','png','jpeg')) for f in files)])
 
@@ -72,25 +69,27 @@ console.print(f"[red]Train: {num_train} files | {num_classes} classes[/]")
 console.print(f"[yellow]Val: {num_val} files | {num_classes} classes[/]")
 console.print(f"[green]Test: {num_test} files | {num_classes} classes[/]")
 
-# 類別數與名稱
 num_classes = len(train_ds.class_names)
 class_names = train_ds.class_names
 print(f"Number of classes: {num_classes}")
 print(class_names)
 
-# 計算類別權重
-# （需將 one-hot label 還原成 class index）
+# class weight
 y_train_all = []
 for _, labels in train_ds.unbatch():
-    y_train_all.append(np.argmax(labels.numpy()))  # 取最大值 index
+    y_train_all.append(np.argmax(labels.numpy()))  
 y_train_all = np.array(y_train_all)
-
 class_weights_array = compute_class_weight(
     class_weight = 'balanced',
     classes = np.unique(y_train_all),
     y = y_train_all
 )
 class_weights = dict(enumerate(class_weights_array))
+if len(np.unique(y_train_all)) < num_classes:
+    console.print("[red] Warning! class_weight set at 1[/]")
+    for i in range(num_classes):
+        if i not in class_weights:
+            class_weights[i] = 1.0
 print("Computed class weights:", class_weights)
 
 # 前處理與增強
@@ -113,9 +112,19 @@ def preprocess_with_aug(x, y):
     x = mobilenet_v2.preprocess_input(x)        # 再進行 MobileNetV2 標準化
     return x, y
 
+def mixup(ds, alpha=0.2):
+    def mix(x, y):
+        beta = tf.random.uniform([], 0, alpha)
+        index = tf.random.shuffle(tf.range(tf.shape(x)[0]))
+        x_mix = beta * x + (1 - beta) * tf.gather(x, index)
+        y_mix = beta * y + (1 - beta) * tf.gather(y, index)
+        return x_mix, y_mix
+    return ds.map(mix, num_parallel_calls=AUTOTUNE)
+
 AUTOTUNE = tf.data.AUTOTUNE
-train_ds = train_ds.map(lambda x, y: preprocess_with_aug(x, y), num_parallel_calls=AUTOTUNE)
-val_ds = val_ds.map(lambda x, y: preprocess(x, y), num_parallel_calls=AUTOTUNE)
+train_ds = train_ds.map(lambda x, y: preprocess_with_aug(x, y), num_parallel_calls = AUTOTUNE)
+train_ds = mixup(train_ds, alpha = 0.1)
+val_ds = val_ds.map(lambda x, y: preprocess(x, y), num_parallel_calls = AUTOTUNE)
 test_ds  = test_ds.map(preprocess).prefetch(buffer_size = AUTOTUNE)
 
 h5_path    = os.path.join(model_dir, 'trash_model_advanced.h5')
@@ -129,10 +138,10 @@ def build_model():
     model = models.Sequential([
     base_model,
     layers.GlobalAveragePooling2D(),
-    layers.Dense(256, activation = 'relu', kernel_regularizer = regularizers.l2(1e-3)),  
+    layers.Dense(256, activation = 'relu', kernel_regularizer = regularizers.l2(1e-4)),  
     layers.BatchNormalization(),
-    layers.Dropout(0.5),  
-    layers.Dense(num_classes, activation = 'softmax', kernel_regularizer = regularizers.l2(1e-3))
+    layers.Dropout(0.4),  
+    layers.Dense(num_classes, activation = 'softmax', kernel_regularizer = regularizers.l2(1e-4))
 ])
     return model
 
@@ -158,7 +167,11 @@ class RichBatchProgressBar(Callback):
 
     def on_epoch_end(self, epoch, logs = None):
         _ = epoch, logs
-        self.progress.stop()
+        if hasattr(self, 'progress'):
+            try:
+                self.progress.stop()
+            except Exception:
+                pass
 
 try:
     if os.path.exists(h5_path):
@@ -174,20 +187,23 @@ except Exception as e:
     console.print("[cyan]Build new model:[/]", e)
     model = build_model()
 
+def custom_loss(y_true, y_pred):
+    return tf.keras.losses.categorical_crossentropy(y_true, y_pred, label_smoothing = 0.01) # label smoothing
+
 model.compile(
     optimizer = tf.keras.optimizers.Adam(learning_rate = 1e-4),
-    loss = CategoricalCrossentropy(from_logits = False, label_smoothing = 0.1),  
+    loss = custom_loss,  
     metrics = ['accuracy']
 )
 
-early_stop_phase1 = EarlyStopping(monitor = 'val_loss', patience = 5, restore_best_weights = True, verbose = 1)
-early_stop_phase2 = EarlyStopping(monitor = 'val_loss', patience = 5, restore_best_weights = True, verbose = 1)
+early_stop_phase1 = EarlyStopping(monitor = 'val_accuracy', patience = 5, restore_best_weights = True, verbose = 1)
+early_stop_phase2 = EarlyStopping(monitor = 'val_accuracy', patience = 5, restore_best_weights = True, verbose = 1)
 reduce_lr_phase1 = ReduceLROnPlateau(monitor = 'val_loss', factor = 0.5, patience = 3, min_lr = 1e-6, verbose = 1)
 reduce_lr_phase2 = ReduceLROnPlateau(monitor = 'val_loss', factor = 0.3, patience = 3, min_lr = 1e-7, verbose = 1)
 
 checkpoint_phase1 = ModelCheckpoint(
     filepath = os.path.join(model_dir, f'best_val_acc_phase1_run{count}.h5'),
-    monitor = 'val_loss',   #
+    monitor = 'val_loss',   
     save_best_only = True,
     verbose = 1
 )
@@ -207,20 +223,19 @@ console.print("[magenta]Phase-2 fine-tune[/]")
 base_model = model.layers[0]
 for layer in base_model.layers[:-20]:
     layer.trainable = False
-for layer in base_model.layers[-20:]:
-    # 解凍但跳過 BatchNormalization
-    if not isinstance(layer, tf.keras.layers.BatchNormalization):
-        layer.trainable = True
-    else:
-        layer.trainable = False  # 保持 BN 推理模式
+set_trainable = False
+for layer in base_model.layers:
+    if 'block_11' in layer.name:
+        set_trainable = True
+    layer.trainable = set_trainable and not isinstance(layer, tf.keras.layers.BatchNormalization)
+
 model.compile(optimizer = tf.keras.optimizers.Adam(learning_rate = 1e-6),   
-              loss = CategoricalCrossentropy(from_logits = False, label_smoothing = 0.1),    
+              loss = custom_loss,    
               metrics = ['accuracy'])
 history_fine = model.fit(
-    train_ds, validation_data = val_ds, epochs = 20,
+    train_ds, validation_data = val_ds, epochs = 30,
     callbacks = [early_stop_phase2, reduce_lr_phase2, checkpoint_phase2, RichBatchProgressBar()], verbose = 0, class_weight = class_weights
 )
-
 for k in history.history:
     history.history[k].extend(history_fine.history[k])
 
@@ -228,7 +243,7 @@ for k in history.history:
 best_model_path = os.path.join(model_dir, f'best_val_acc_phase2_run{count}.h5')
 if os.path.exists(best_model_path):
     console.print("[magenta]Reload best Phase-2 model before final evaluation[/]")
-    model = load_model(best_model_path)
+    model = load_model(best_model_path, custom_objects={'custom_loss': custom_loss})
 
 test_loss, test_acc = model.evaluate(test_ds, verbose = 1)
 print(f"Test Acc: {test_acc:.4f} | Test Loss: {test_loss:.4f}")
@@ -257,6 +272,7 @@ console.print("[cyan]Classification Report:[/]")
 print(" ")
 print(classification_report(y_true, y_pred, target_names=class_names))
 model.save(h5_path)
+model.save(keras_path, save_format = 'keras')
 backup_model_path = os.path.join(model_dir, f'best_model_run{count}.h5')
 model.save(backup_model_path)
 
@@ -297,6 +313,8 @@ log_text += "-------------------------\n"
 with open(os.path.join(model_dir, 'log.txt'), 'a', encoding = 'utf-8') as f:
     f.write(log_text)
 
-# history_path = os.path.join(model_dir, f'history_run{count}.json')
-# with open(history_path, 'w', encoding = 'utf-8') as f:
-#     json.dump(history.history, f, indent = 2, ensure_ascii = False)
+def convert_history(history_dict):
+    return {k: [float(vv) for vv in v] for k, v in history_dict.items()}
+history_path = os.path.join(model_dir, f'history_run{count}.json')
+with open(history_path, 'w', encoding = 'utf-8') as f:
+    json.dump(history.history, f, indent=2, ensure_ascii=False, default=lambda o: float(o) if isinstance(o, (np.float32, np.float64)) else o)
