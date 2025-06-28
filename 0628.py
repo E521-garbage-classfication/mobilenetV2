@@ -10,16 +10,25 @@ from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import classification_report
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
+from datetime import datetime
+from rich.console import Console
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # 0 = all, 1 = info, 2 = warning, 3 = error only
 tf.get_logger().setLevel('ERROR')
 import matplotlib.pyplot as plt
 import numpy as np
 import logging
-from datetime import datetime
-# import json
+import random
 import sys
+# import json
+
+console = Console() 
 sys.stdout.flush()
-print(tf.__version__)
+
+seed = 42
+tf.random.set_seed(seed)
+np.random.seed(seed)
+random.seed(seed)
+
 # model saved
 model_dir = r'C:\E521C\saved_models_v2_new'
 os.makedirs(model_dir, exist_ok = True)
@@ -59,9 +68,9 @@ num_val   = count_images(val_dir)
 num_test  = count_images(test_dir)
 num_classes = len(train_ds.class_names)
 
-print(f"📂 Train: {num_train} files | {num_classes} classes")
-print(f"🧪 Val: {num_val} files | {num_classes} classes")
-print(f"🧾 Test: {num_test} files | {num_classes} classes")
+console.print(f"[red]Train: {num_train} files | {num_classes} classes[/]")
+console.print(f"[yellow]Val: {num_val} files | {num_classes} classes[/]")
+console.print(f"[green]Test: {num_test} files | {num_classes} classes[/]")
 
 # 類別數與名稱
 num_classes = len(train_ds.class_names)
@@ -73,7 +82,7 @@ print(class_names)
 # （需將 one-hot label 還原成 class index）
 y_train_all = []
 for _, labels in train_ds.unbatch():
-    y_train_all.append(np.argmax(labels.numpy()))  # ← 取最大值 index
+    y_train_all.append(np.argmax(labels.numpy()))  # 取最大值 index
 y_train_all = np.array(y_train_all)
 
 class_weights_array = compute_class_weight(
@@ -82,7 +91,7 @@ class_weights_array = compute_class_weight(
     y = y_train_all
 )
 class_weights = dict(enumerate(class_weights_array))
-print("⚖️ Computed class weights:", class_weights)
+print("Computed class weights:", class_weights)
 
 # 前處理與增強
 augmentation = tf.keras.Sequential([
@@ -98,19 +107,17 @@ def preprocess(x, y):
     x = mobilenet_v2.preprocess_input(x)
     return x, y
     
-# ✅ 建立新的 augmentation + preprocess 合併函式
+# 建立新的 augmentation + preprocess 合併函式
 def preprocess_with_aug(x, y):
     x = augmentation(x)                         # 資料增強先執行
     x = mobilenet_v2.preprocess_input(x)        # 再進行 MobileNetV2 標準化
     return x, y
 
-# ✅ 正確套用順序
 AUTOTUNE = tf.data.AUTOTUNE
-train_ds = train_ds.map(preprocess_with_aug).prefetch(buffer_size = AUTOTUNE)
-val_ds   = val_ds.map(preprocess).prefetch(buffer_size = AUTOTUNE)
+train_ds = train_ds.map(lambda x, y: preprocess_with_aug(x, y), num_parallel_calls=AUTOTUNE)
+val_ds = val_ds.map(lambda x, y: preprocess(x, y), num_parallel_calls=AUTOTUNE)
 test_ds  = test_ds.map(preprocess).prefetch(buffer_size = AUTOTUNE)
 
-# 模型路徑
 h5_path    = os.path.join(model_dir, 'trash_model_advanced.h5')
 keras_path = os.path.join(model_dir, 'trash_model_advanced.keras')
 
@@ -124,7 +131,7 @@ def build_model():
     layers.GlobalAveragePooling2D(),
     layers.Dense(256, activation = 'relu', kernel_regularizer = regularizers.l2(1e-3)),  
     layers.BatchNormalization(),
-    layers.Dropout(0.6),  
+    layers.Dropout(0.5),  
     layers.Dense(num_classes, activation = 'softmax', kernel_regularizer = regularizers.l2(1e-3))
 ])
     return model
@@ -155,21 +162,21 @@ class RichBatchProgressBar(Callback):
 
 try:
     if os.path.exists(h5_path):
-        print("✅ Load existing .h5 model")
+        console.print("[cyan]Load existing .h5 model[/]")
         model = load_model(h5_path)
     elif os.path.exists(keras_path):
-        print("🧪 Convert .keras → .h5")
+        console.print("[cyan]Convert .keras → .h5[/]")
         model = load_model(keras_path)
         model.save(h5_path)
     else:
         raise FileNotFoundError
 except Exception as e:
-    print("🔃 Build new model:", e)
+    console.print("[cyan]Build new model:[/]", e)
     model = build_model()
 
 model.compile(
     optimizer = tf.keras.optimizers.Adam(learning_rate = 1e-4),
-    loss = CategoricalCrossentropy(from_logits = False, label_smoothing = 0.1),  # label_smoothing = 0.1
+    loss = CategoricalCrossentropy(from_logits = False, label_smoothing = 0.1),  
     metrics = ['accuracy']
 )
 
@@ -191,12 +198,12 @@ checkpoint_phase2 = ModelCheckpoint(
     verbose = 1
 )
 
-print("🚀 Phase-1 training")
+console.print("[magenta]Phase-1 training[/]")
 history = model.fit(train_ds, validation_data = val_ds, epochs = 30,
-                    callbacks = [early_stop_phase1, reduce_lr_phase1, checkpoint_phase1, RichBatchProgressBar()], verbose = 0#, class_weight = class_weights
+                    callbacks = [early_stop_phase1, reduce_lr_phase1, checkpoint_phase1, RichBatchProgressBar()], verbose = 0, class_weight = class_weights
 )
 
-print("🔧 Phase-2 fine-tune")
+console.print("[magenta]Phase-2 fine-tune[/]")
 base_model = model.layers[0]
 for layer in base_model.layers[:-20]:
     layer.trainable = False
@@ -207,11 +214,11 @@ for layer in base_model.layers[-20:]:
     else:
         layer.trainable = False  # 保持 BN 推理模式
 model.compile(optimizer = tf.keras.optimizers.Adam(learning_rate = 1e-6),   
-              loss = CategoricalCrossentropy(from_logits = False, label_smoothing = 0.1),    # label_smoothing = 0.1
+              loss = CategoricalCrossentropy(from_logits = False, label_smoothing = 0.1),    
               metrics = ['accuracy'])
 history_fine = model.fit(
     train_ds, validation_data = val_ds, epochs = 20,
-    callbacks = [early_stop_phase2, reduce_lr_phase2, checkpoint_phase2, RichBatchProgressBar()], verbose = 0#, class_weight = class_weights
+    callbacks = [early_stop_phase2, reduce_lr_phase2, checkpoint_phase2, RichBatchProgressBar()], verbose = 0, class_weight = class_weights
 )
 
 for k in history.history:
@@ -220,11 +227,11 @@ for k in history.history:
 # 重新載入 val_accuracy 最佳的模型
 best_model_path = os.path.join(model_dir, f'best_val_acc_phase2_run{count}.h5')
 if os.path.exists(best_model_path):
-    print("🔁 Reload best Phase-2 model before final evaluation")
+    console.print("[magenta]Reload best Phase-2 model before final evaluation[/]")
     model = load_model(best_model_path)
 
 test_loss, test_acc = model.evaluate(test_ds, verbose = 1)
-print(f"🧪 Test Acc: {test_acc:.4f} | Test Loss: {test_loss:.4f}")
+print(f"Test Acc: {test_acc:.4f} | Test Loss: {test_loss:.4f}")
 
 # 混淆矩陣
 y_true = []
@@ -246,7 +253,8 @@ plt.savefig(cm_path)
 plt.show()
 plt.close()
 print(f"Confusion matrix saved to: {cm_path}")
-print("Classification Report:")
+console.print("[cyan]Classification Report:[/]")
+print(" ")
 print(classification_report(y_true, y_pred, target_names=class_names))
 model.save(h5_path)
 backup_model_path = os.path.join(model_dir, f'best_model_run{count}.h5')
@@ -292,4 +300,3 @@ with open(os.path.join(model_dir, 'log.txt'), 'a', encoding = 'utf-8') as f:
 # history_path = os.path.join(model_dir, f'history_run{count}.json')
 # with open(history_path, 'w', encoding = 'utf-8') as f:
 #     json.dump(history.history, f, indent = 2, ensure_ascii = False)
-# print(f"Training history saved to: {history_path}")
