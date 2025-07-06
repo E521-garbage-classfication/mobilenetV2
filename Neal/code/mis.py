@@ -9,8 +9,6 @@ from PIL import Image
 from collections import Counter
 from rich.console import Console
 
-# 初步資料清理
-
 console = Console()
 # ===== Path Setting =====
 model_path = r"C:\E521C\Model\model_smoothing\best_val_acc_phase2_run1.h5"
