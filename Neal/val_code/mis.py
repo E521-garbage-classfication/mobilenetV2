@@ -89,6 +89,4 @@ for i, (_, path, true_cls, pred_cls, prob) in enumerate(wrong_preds):
         print(f"Failed to copy {path}: {e}")
 
 print(f"\nMisclassified images saved to: {save_dir}")
-
-# ===== Show Wrong Images =====
 print(f"\nTotal misclassified: {len(wrong_preds)}")
