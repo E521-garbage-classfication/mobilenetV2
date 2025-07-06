@@ -29,7 +29,6 @@ model = load_model(
 class_names = sorted([d for d in os.listdir(test_dir) if os.path.isdir(os.path.join(test_dir, d))])
 print(f"\nCategory: {class_names}\n")
 
-
 # ===== Clear Old Output Data =====
 if os.path.exists(output_root):
     for folder in ["low_conf_correct", "low_conf_wrong", "ambiguous", "high_conf_wrong"]:
