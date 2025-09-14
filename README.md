@@ -21,7 +21,14 @@ stateDiagram-v2
     StopState: STOP → LCD=Standby
     StopState --> Standby
 
-    note right of Classify: 分類標籤：\n- PLASTIC\n- GLASS\n- PAPER\n- METAL\n- MANUAL (timeout)
+    note  動作狀態
+        分類標籤：
+        - PLASTIC
+        - GLASS
+        - PAPER
+        - METAL
+        - MANUAL (timeout)
+    end note
 
     
 
