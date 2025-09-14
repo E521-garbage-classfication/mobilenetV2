@@ -2,8 +2,7 @@
 
 ## 狀態流程圖
 
-## 狀態流程圖
-
+```mermaid
 stateDiagram-v2
     [*] --> Standby
     Standby: STANDBY\nPRESS START
@@ -30,6 +29,7 @@ stateDiagram-v2
         - METAL
         - MANUAL (timeout)
     end note
+
 
 
 
