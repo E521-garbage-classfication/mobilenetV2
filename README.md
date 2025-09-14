@@ -7,11 +7,11 @@
 ```mermaid
 stateDiagram-v2
     [*] --> 初始狀態
-    初始狀態: STANDBY\nPRESS START
+    初始狀態: STANDBY PRESS START
     初始狀態 --> 待機狀態: START 按鈕
     初始狀態 --> 初始狀態: STOP 按鈕 (保持 Standby)
 
-    待機狀態: WELCOME\nREADY...
+    待機狀態: WELCOME READY...
     待機狀態 --> 動作狀態: 超音波觸發 < threshold
     待機狀態 --> 初始狀態: STOP 按鈕
 
