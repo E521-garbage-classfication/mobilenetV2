@@ -5,10 +5,10 @@
 ```mermaid
 stateDiagram-v2
     [*] --> 初始狀態: 啟動 Arduino
-    初始狀態: LCD = "STANDBY\nPRESS START"
+    初始狀態: LCD = "STANDBY PRESS START"
 
     初始狀態 --> 待機狀態: 按下 START (送 start 指令)
-    待機狀態: LCD = "WELCOME\nREADY..."
+    待機狀態: LCD = "WELCOME READY..."
 
     待機狀態 --> 動作狀態: 超音波偵測 < threshold → 傳送 READY
     動作狀態: LCD = "Classifying..." → 顯示分類標籤
