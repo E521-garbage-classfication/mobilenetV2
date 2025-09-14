@@ -23,7 +23,7 @@ stateDiagram-v2
     StopState: STOP → LCD=Standby
     StopState --> 初始狀態
 
-    note right of 動作狀態
+    note bottom of 動作狀態
         分類標籤：
         - PLASTIC
         - GLASS
@@ -31,6 +31,7 @@ stateDiagram-v2
         - METAL
         - MANUAL (timeout)
     end note
+
 
 
 
