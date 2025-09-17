@@ -3,32 +3,33 @@
 ## 狀態流程圖
 
 ```mermaid
-stateDiagram-v2
-    [*] --> Standby
-    Standby: STANDBY\nPRESS START
-    Standby --> Ready: START 按鈕
-    Standby --> StopState: STOP 按鈕
+sequenceDiagram
+    participant Pi as Raspberry Pi
+    participant Arduino as Arduino
 
-    Ready: WELCOME\nREADY...
-    Ready --> Classify: 超音波觸發 < threshold
-    Ready --> StopState: STOP 按鈕
+    Pi->>Arduino: start
+    Arduino->>Arduino: LCD=STANDBY → IDLE (WELCOME/READY)
 
-    Classify: Classifying...\n顯示分類標籤
-    Classify --> Ready: 動作完成 + 顯示 2 秒
-    Classify --> Ready: Timeout → MANUAL
-    Classify --> StopState: STOP 按鈕
+    Arduino->>Arduino: 偵測物件 <10cm
+    Arduino->>Pi: READY
 
-    StopState: STOP → LCD=Standby
-    StopState --> Standby
+    Pi->>Arduino: label (plastic / glass / paper / metal)
+    Arduino-->>Pi: ACK:<label>
+    Arduino->>Arduino: LCD 顯示標籤
+    Arduino->>Arduino: 馬達動作
+    Arduino->>Pi: done
 
-    note right of Classify
-        分類標籤：
-        - PLASTIC
-        - GLASS
-        - PAPER
-        - METAL
-        - MANUAL (timeout)
-    end note
+    alt Timeout / 無法分類
+        Pi->>Arduino: manual
+        Arduino-->>Pi: ACK:manual
+        Arduino->>Arduino: LCD=MANUAL
+        Arduino->>Arduino: 馬達動作
+        Arduino->>Pi: done
+    end
+
+    Pi->>Arduino: stop
+    Arduino->>Arduino: LCD=STANDBY
+
 
     
 
