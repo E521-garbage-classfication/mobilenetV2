@@ -8,7 +8,7 @@ sequenceDiagram
     participant Arduino as Arduino
 
     Pi->>Arduino: start
-    Arduino->>Arduino: LCD=WELCOME/READY (IDLE)
+    Arduino->>Arduino: LCD = WELCOME/READY (IDLE)
 
     Arduino->>Arduino: 偵測物件 <10cm → ARMED
     Arduino->>Pi: READY
@@ -30,7 +30,7 @@ sequenceDiagram
     end
 
     Pi->>Arduino: stop
-    Arduino->>Arduino: LCD=STANDBY (NOT_RUNNING)
+    Arduino->>Arduino: LCD = STANDBY (NOT_RUNNING)
 
 
 
