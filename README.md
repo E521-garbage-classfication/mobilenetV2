@@ -3,34 +3,22 @@
 ## 狀態流程圖
 
 ```mermaid
-sequenceDiagram
-    participant Pi as Raspberry Pi
-    participant Arduino as Arduino
+flowchart TD
+    A[輸入影像<br/>192×192×3 RGB] --> B[資料管線<br/>訓練: 資料增強<br/>推論: 僅前處理]
+    B --> C[MobileNetV2 主幹網路<br/>include_top=False<br/>weights='imagenet']
+    C --> D[GlobalAveragePooling2D]
 
-    Pi->>Arduino: start
-    Arduino->>Arduino: LCD = WELCOME/READY (IDLE)
+    D --> E[Dense(128, ReLU)<br/>L2(2e-4)]
+    E --> F[BatchNormalization]
+    F --> G[Dropout(0.45)]
 
-    Arduino->>Arduino: 偵測物件 <10cm → ARMED
-    Arduino->>Pi: READY
+    G --> H[Dense(64, ReLU)<br/>L2(2e-4)]
+    H --> I[BatchNormalization]
+    I --> J[Dropout(0.35)]
 
-    Pi->>Pi: 進入 CLASSIFYING (攝影機推論)
+    J --> K[Dense(num_classes, Softmax)<br/>L2(2e-4)]
+    K --> L[輸出機率分佈<br/>(paper / plastic / metal / glass)]
 
-    alt 分類成功
-        Pi->>Arduino: label (plastic/glass/paper/metal)
-        Arduino-->>Pi: ACK:<label>
-        Arduino->>Arduino: LCD 顯示標籤
-        Arduino->>Arduino: 馬達動作
-        Arduino->>Pi: done
-    else 超時/不穩定
-        Pi->>Arduino: manual
-        Arduino-->>Pi: ACK:manual
-        Arduino->>Arduino: LCD = MANUAL
-        Arduino->>Arduino: 馬達動作
-        Arduino->>Pi: done
-    end
-
-    Pi->>Arduino: stop
-    Arduino->>Arduino: LCD = STANDBY (NOT_RUNNING)
 
 
 
